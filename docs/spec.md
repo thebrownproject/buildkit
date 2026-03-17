@@ -22,9 +22,12 @@ This is **Archie Copilot without Revit**. Where Archie Copilot proved that natur
 ### Design Principles
 
 1. **LLMs never do geometry.** IfcOpenShell computes all geometry. The AI reasons about intent, selects components, fills parameters, and calls tools.
-2. **Dumb tools, smart agent.** CLI tools are simple Python scripts with explicit inputs and JSON outputs. All intelligence lives in the agent's reasoning.
+2. **Dumb tools, smart agent.** CLI tools are simple Python scripts with explicit inputs and JSON outputs. All intelligence lives in the agent's reasoning. Exception: wall connectivity and opening validation are tool-side logic (the agent can't solve geometry problems through reasoning alone).
 3. **IFC is the source of truth.** Everything reads and writes IFC. No intermediate formats, no proprietary lock-in.
 4. **Open by default.** MIT license. No cloud backend required. Runs locally.
+5. **Millimetres everywhere.** All dimensions in millimetres (Australian construction practice). IFC model units set to MILLIMETRE at project creation. No unit conversion in the agent's reasoning.
+6. **Names, not GUIDs.** Elements are referenced by human-readable names (Wall_North_Ext, Door_Entry), not IFC GUIDs. CLI tools accept either. GUIDs are internal plumbing.
+7. **Functions first, CLI second.** Component logic is importable Python functions. CLI tools are thin argparse wrappers. This ensures the same code works for future web API / MCP server integration.
 
 ---
 
@@ -55,9 +58,23 @@ This is **Archie Copilot without Revit**. Where Archie Copilot proved that natur
 - **ChatHouseDiffusion** (2024) — Extends HouseDiffusion with LLM natural language input.
 - **Modular MCP Reference Architecture** (Jan 2026) — Proposes distributed AI agents across BIM workflow stages, each served by specialised MCP servers.
 
-### Key Insight
+### Also Notable
 
-The gap in the landscape is clear: **no open-source tool combines conversational AI + standalone IfcOpenShell (no Blender) + browser-based viewer + Australian market focus.** MCP4IFC is closest but requires Blender. Text2BIM requires Vectorworks. Archie Copilot requires Revit. Buildkit requires nothing but Python and a browser.
+- **ifcMCP** (smartaec, Tsinghua University) — Standalone IfcOpenShell MCP server, no Blender. Read-only today but closest lightweight alternative.
+- **DDC Skills** (datadrivenconstruction) — 221 Claude Code skills for construction automation including IFC validation and QTO.
+
+### Positioning
+
+Buildkit's real differentiators are not "open source" (that's a mechanism, not a value prop) but:
+- **Data sovereignty** — IFC files are yours. Run behind your firewall. No data leaves your network.
+- **Self-hostable** — No cloud dependency. Your API key, your infrastructure.
+- **Forkable** — Adapt for any market (Middle East codes, Japanese timber framing, Australian NCC).
+- **No commercial software dependency** — Python + browser. No Revit ($$$), no Vectorworks, no Blender.
+
+The primary target users are:
+1. **Construction tech developers** who need an open IFC creation engine to embed in their products
+2. **Property developers / builders** who need rapid site feasibility (what fits on this block?)
+3. **Small architectural firms / draftspeople** who can't afford Forma ($400/mo) for concept design
 
 ---
 
@@ -138,7 +155,7 @@ CLI tool:
   2. Cuts opening in wall via IfcRelVoidsElement
   3. Creates IfcDoor with parametric geometry (lining + panel)
   4. Fills opening via IfcRelFillsElement
-  5. Returns JSON: {guid: "3y4def...", type: "IfcDoor", position: [2.5, 0, 0]}
+  5. Returns JSON: {name: "Door_North_1", guid: "3y4def...", type: "IfcDoor", position: [2500, 0, 0]}
   ↓
 Agent:
   - Reads response, confirms success
@@ -161,28 +178,18 @@ The library wraps IfcOpenShell's `ifcopenshell.api.geometry` functions into para
 
 | Component | Parameters | IfcOpenShell Function | Geometry Type |
 |-----------|-----------|----------------------|---------------|
-| **Wall** | start, end, height, thickness | `create_2pt_wall()` / `add_wall_representation()` | ExtrudedAreaSolid |
-| **Slab / Floor** | outline polygon, thickness | `add_slab_representation()` | ExtrudedAreaSolid |
-| **Door** | width, height, host_wall, position, operation_type | `add_door_representation()` + opening/filling | Parametric (lining + panel) |
-| **Window** | width, height, sill_height, host_wall, position, partition_type | `add_window_representation()` + opening/filling | Parametric (lining + mullions) |
-| **Column** | profile (rect/circle), dimensions, height | `add_profile_representation()` | ExtrudedAreaSolid |
-| **Beam** | profile (I/rect), dimensions, length | `add_profile_representation()` | ExtrudedAreaSolid |
-| **Roof** | outline, slope_angle, thickness | `add_slab_representation(x_angle=...)` | ExtrudedAreaSolid (angled) |
-| **Opening** | width, height, host_element, position | `add_wall_representation()` + `add_feature()` | ExtrudedAreaSolid (void) |
+| **Wall** | name, start, end, height, thickness | `create_2pt_wall()` / `add_wall_representation()` | ExtrudedAreaSolid |
+| **Wall (perimeter)** | name, outline points[], height, thickness | Connected polyline with corner handling | ExtrudedAreaSolid (clipped at corners) |
+| **Slab / Floor** | name, outline polygon, thickness | `add_slab_representation()` | ExtrudedAreaSolid |
+| **Door** | name, width, height, host_wall (name or GUID), position_along_wall, operation_type | `add_door_representation()` + opening/filling | Parametric (lining + panel) |
+| **Window** | name, width, height, sill_height, host_wall, position_along_wall, partition_type | `add_window_representation()` + opening/filling | Parametric (lining + mullions) |
+| **Space** | name, boundary polygon, height | `IfcSpace` entity | Spatial (no visible geometry) |
+| **Roof** | name, type (gable/shed), outline, slope_angle, thickness | `add_slab_representation(x_angle=...)` | ExtrudedAreaSolid (angled) |
+| **Opening** | name, width, height, host_element, position_along_wall | `add_wall_representation()` + `add_feature()` | ExtrudedAreaSolid (void) |
 
-### Tier 2: Extended Elements
+**Note:** Every element gets a `--name` parameter (e.g., "Wall_North_Ext"). All host references accept names or GUIDs. Position along wall is measured from the wall's start point in millimetres.
 
-| Component | Parameters | Method |
-|-----------|-----------|--------|
-| **Stair** | rise, run, num_treads, width | Custom profile via `add_profile_representation()` |
-| **Railing** | path, height, diameter | `add_railing_representation()` |
-| **Footing** | width, length, depth | `add_wall_representation()` (box) |
-| **Space** | boundary polygon, height, name | `IfcSpace` with `add_slab_representation()` |
-| **Curtain Wall** | grid pattern, panel dimensions | Mesh-based |
-
-### Tier 3: Furniture & Fixtures (Future)
-
-Mesh-based (`add_mesh_representation()`) from a library of common objects.
+**Deferred from Tier 1:** Columns, beams (not needed for residential). Stairs (hard geometry). Railings, footings, curtain walls, furniture.
 
 ### Geometry Complexity Boundary
 
@@ -416,51 +423,94 @@ This mirrors Archie Copilot's proven self-correction loop and Zoo.dev's 5-retry 
 
 ## 8. Phased Roadmap
 
-### Phase 1: Foundation (Viewer + Query)
+### Spike Test (before anything else)
 
-**Goal:** Working IFC viewer + basic CLI tools for querying existing models.
+**Goal:** Prove the pipeline works. See [docs/spike-test.md](spike-test.md).
 
-- [ ] That Open Engine viewer with: 3D view, spatial tree, property panel, visibility toggles, drag-and-drop loading
-- [ ] `ifc_query.py` — read and summarise IFC models
-- [ ] `ifc_validate.py` — basic schema and structure validation
-- [ ] Project scaffolding: repo, docs, CI, example IFC files
-- [ ] README with live demo (GitHub Pages static site)
+- [ ] `examples/demo_house.py` — generate a simple house with IfcOpenShell (4 walls, slab, door, windows, roof)
+- [ ] Viewer v0.1 — scaffold That Open Engine, drag-and-drop IFC loading
+- [ ] Load generated house in viewer — does it render?
 
-**This phase alone is a useful open-source project** — a standalone, no-install IFC viewer.
+**This is a 1-2 day experiment.** If it works, proceed to Phase 1. If it's painful, we know where the problems are.
 
-### Phase 2: Creation (Component Library + Place/Modify)
+### Phase 1: Foundation (Viewer + Query) — 2-4 weeks
 
-**Goal:** AI agent can create and modify simple buildings.
+**Goal:** Working IFC viewer + query CLI tool.
 
-- [ ] Component library: walls, slabs, doors, windows, columns, roofs
-- [ ] `ifc_create.py` — initialise new IFC models
-- [ ] `ifc_place.py` — place elements from templates
-- [ ] `ifc_modify.py` — modify/move/delete elements
-- [ ] Type catalog with Australian standard sizes
-- [ ] Agent workflow integration (Claude Code skills or MCP server)
+**Viewer (two drops):**
+- [ ] v0.1: 3D viewport + drag-and-drop IFC loading + deploy to GitHub Pages (2-3 days)
+- [ ] v0.2: Spatial tree panel + property inspector + visibility toggles + element highlighting (1-2 weeks)
 
-### Phase 3: Intelligence (Agent + Viewer Integration)
+**CLI tools:**
+- [ ] `ifc_query.py` — read and summarise IFC models (reuse BuildBrain patterns)
 
-**Goal:** Conversational design loop — chat + viewer side by side.
+**Scaffolding:**
+- [ ] Example IFC files (demo house from spike test + BuildingSMART samples)
+- [ ] CLAUDE.md (agent instructions for future phases)
+- [ ] README with live demo link
 
-- [ ] Chat panel integrated with viewer (web UI)
-- [ ] Selection-as-context: click element in viewer → agent receives context
-- [ ] Agent modifies model → viewer auto-refreshes
-- [ ] Multi-turn design iteration with full conversation history
-- [ ] Visual feedback: agent can "see" the model (screenshot/render)
+**Deferred to Phase 2:** `ifc_validate.py` (validation is useful when the agent creates models and needs to check its own output).
 
-### Phase 4: Validation & Compliance (Australian Market)
+### Phase 1.5: First Element — 1 week
 
-**Goal:** AI-assisted compliance checking against Australian building codes.
+**Goal:** Prove the creation pipeline works end-to-end.
 
-- [ ] NCC/BCA rule encoding as IDS specifications
-- [ ] `ifc_validate.py` extended with NCC checks:
-  - Fire safety (FRL, compartmentation, egress distances)
-  - Accessibility (AS 1428.1 — door widths, ramp gradients, toilet dimensions)
-  - Energy efficiency (NatHERS alignment, glazing ratios)
-  - Structural basics (load path validation)
-- [ ] BuildBrain integration — cross-validate IFC model against PDF specifications
-- [ ] Compliance report generation
+- [ ] `ifc_create.py` — initialise new IFC model (spatial hierarchy, millimetre units)
+- [ ] `ifc_place.py wall` — single element type only
+- [ ] Verify: CLI creates wall → loads in viewer → wall renders correctly
+
+### Phase 2: Creation (Component Library) — 2-4 months
+
+**Goal:** AI agent can create and modify simple single-storey buildings.
+
+**Component library (one element at a time):**
+- [ ] Wall (perimeter polyline for connected corners, plus individual placement)
+- [ ] Slab / floor
+- [ ] Door (opening + void + filling chain, with placement validation)
+- [ ] Window (same pattern as door)
+- [ ] IfcSpace (rooms — the agent reasons about rooms, needs formal representation)
+- [ ] Roof (gable and shed only for v1 — two angled slabs)
+
+**CLI tools:**
+- [ ] `ifc_place.py` — subcommands per element type (`ifc_place.py wall ...`, `ifc_place.py door ...`)
+- [ ] `ifc_modify.py` — move, resize, delete, set properties
+- [ ] `ifc_validate.py` — schema checks, wall connectivity, opening integrity, dimensional sanity
+- [ ] `ifc_query.py` enriched — room areas, wall connectivity, element-host relationships
+
+**Known hard problems:**
+- Wall connectivity at corners/T-junctions (perimeter polyline approach for external, butt-join for internal)
+- Door/window placement validation (minimum stub distance, no overlap with existing openings)
+- Roof geometry (no `add_roof_representation()` in IfcOpenShell — composed from angled slabs)
+- File backup before modifications (agent self-correction can corrupt the model)
+
+**Deferred:** Columns, beams (not needed for residential MVP). Stairs (hard geometry). Multi-storey.
+
+### Phase 3: Web UI Integration — scope TBD
+
+**Goal:** Chat + viewer side by side in a browser.
+
+**Note:** This is a separate web application, not just "adding a chat panel." Requires:
+- Frontend framework decision (React/Vue/vanilla + Lit Web Components)
+- API layer (Claude API needs a server proxy — breaks "no backend" promise)
+- Viewer-to-agent communication protocol (selection-as-context)
+- Model refresh mechanism (WebSocket file watcher on a local server)
+- Visual feedback for the agent (canvas screenshots via Three.js)
+
+Phase 3 scope will be defined after Phase 2 based on what we learn.
+
+### Phase 4: Compliance (separate project scope)
+
+**Goal:** AI-assisted NCC pre-screening (helper, not authority).
+
+This is a different product with different customers and different liability implications. Scope limited to:
+- [ ] IDS specifications for data quality gates (property presence checks)
+- [ ] Python rule engine for dimensional checks only:
+  - Door widths (>= 850mm), corridor widths (>= 1000mm)
+  - Room sizes (minimum areas), ceiling heights (2.4m habitable, 2.1m non-habitable)
+  - Glazing ratios (window area / floor area)
+  - Fire rating property presence (flag missing, don't evaluate correctness)
+
+**Explicitly out of scope:** NatHERS energy simulation, structural load path analysis, fire egress pathfinding. These are entire commercial products.
 
 **Australian context:**
 - The NCC is NOT machine-readable — no structured/computable version exists. ABCB is at "discussion paper" stage. The door is wide open.

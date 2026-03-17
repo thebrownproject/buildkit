@@ -33,17 +33,16 @@ components.init();
 const fragments = components.get(OBC.FragmentsManager);
 fragments.init("/node_modules/@thatopen/fragments/dist/Worker/worker.mjs");
 
-// 8. Handle model loading — when a model is added, show it in the scene
+// 8. Handle model loading — freeze after initial render to stop culling
 fragments.list.onItemSet.add(({ value: model }) => {
   model.useCamera(world.camera.three);
   world.scene.three.add(model.object);
   fragments.core.update(true);
+  // Freeze after geometry loads — stops the worker from culling during rotation
+  setTimeout(() => {
+    model.frozen = true;
+  }, 3000);
 });
-
-// 9. Camera update triggers fragment LOD update
-world.camera.controls.addEventListener("update", () =>
-  fragments.core.update()
-);
 
 // 10. Set up IFC loader with CDN WASM
 const ifcLoader = components.get(OBC.IfcLoader);

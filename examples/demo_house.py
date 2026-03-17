@@ -119,7 +119,13 @@ def main():
         product=wall_south, representation=wall_south_rep,
     )
 
-    # --- East wall: p1=(10,0)->p2=(10,8), thickness extends -X -----------
+    # --- East wall: gable wall with roof-slope clipping ---------------------
+    # Ridge at y=4 (midpoint), ridge_height = 2.7 + 4*tan(22.5°)
+    pitch_rad = math.radians(22.5)
+    sin_p = math.sin(pitch_rad)
+    cos_p = math.cos(pitch_rad)
+    ridge_height = 2.7 + 4.0 * math.tan(pitch_rad)
+
     wall_east = ifcopenshell.api.run(
         "root.create_entity", model, ifc_class="IfcWall", name="Wall_East"
     )
@@ -127,15 +133,44 @@ def main():
         "spatial.assign_container", model,
         products=[wall_east], relating_structure=storey,
     )
+    # add_wall_representation: length along local X, thickness along local Y, height along local Z
+    # Clipping planes cut the two upper triangles to form the gable shape
+    # z_local of clipping matrix = half-space normal, pointing toward material to REMOVE
     wall_east_rep = ifcopenshell.api.run(
-        "geometry.create_2pt_wall", model,
-        element=wall_east, context=body,
-        p1=(10.0, 0.0), p2=(10.0, 8.0),
-        elevation=0.0, height=2.7, thickness=0.2, is_si=True,
+        "geometry.add_wall_representation", model,
+        context=body,
+        length=8.0, height=ridge_height, thickness=0.2,
+        clippings=[
+            {
+                "type": "IfcBooleanClippingResult",
+                "operand_type": "IfcHalfSpaceSolid",
+                "matrix": placement_matrix(
+                    [0, 0, 2.7],
+                    x_local=[0, 1, 0],
+                    z_local=[-sin_p, 0, cos_p],
+                ),
+            },
+            {
+                "type": "IfcBooleanClippingResult",
+                "operand_type": "IfcHalfSpaceSolid",
+                "matrix": placement_matrix(
+                    [8.0, 0, 2.7],
+                    x_local=[0, 1, 0],
+                    z_local=[sin_p, 0, cos_p],
+                ),
+            },
+        ],
     )
     ifcopenshell.api.run(
         "geometry.assign_representation", model,
         product=wall_east, representation=wall_east_rep,
+    )
+    # Place: local X along +Y global (south to north), origin at (10, 0, 0)
+    ifcopenshell.api.run(
+        "geometry.edit_object_placement", model,
+        product=wall_east,
+        matrix=placement_matrix([10.0, 0.0, 0.0], x_local=[0, 1, 0], z_local=[0, 0, 1]),
+        is_si=True,
     )
 
     # --- North wall: p1=(10,8)->p2=(0,8), thickness extends -Y -----------
@@ -157,7 +192,7 @@ def main():
         product=wall_north, representation=wall_north_rep,
     )
 
-    # --- West wall: p1=(0,8)->p2=(0,0), thickness extends +X -------------
+    # --- West wall: gable wall with roof-slope clipping ---------------------
     wall_west = ifcopenshell.api.run(
         "root.create_entity", model, ifc_class="IfcWall", name="Wall_West"
     )
@@ -166,14 +201,40 @@ def main():
         products=[wall_west], relating_structure=storey,
     )
     wall_west_rep = ifcopenshell.api.run(
-        "geometry.create_2pt_wall", model,
-        element=wall_west, context=body,
-        p1=(0.0, 8.0), p2=(0.0, 0.0),
-        elevation=0.0, height=2.7, thickness=0.2, is_si=True,
+        "geometry.add_wall_representation", model,
+        context=body,
+        length=8.0, height=ridge_height, thickness=0.2,
+        clippings=[
+            {
+                "type": "IfcBooleanClippingResult",
+                "operand_type": "IfcHalfSpaceSolid",
+                "matrix": placement_matrix(
+                    [0, 0, 2.7],
+                    x_local=[0, 1, 0],
+                    z_local=[-sin_p, 0, cos_p],
+                ),
+            },
+            {
+                "type": "IfcBooleanClippingResult",
+                "operand_type": "IfcHalfSpaceSolid",
+                "matrix": placement_matrix(
+                    [8.0, 0, 2.7],
+                    x_local=[0, 1, 0],
+                    z_local=[sin_p, 0, cos_p],
+                ),
+            },
+        ],
     )
     ifcopenshell.api.run(
         "geometry.assign_representation", model,
         product=wall_west, representation=wall_west_rep,
+    )
+    # Place: local X along +Y global (south to north), origin at (0, 0, 0)
+    ifcopenshell.api.run(
+        "geometry.edit_object_placement", model,
+        product=wall_west,
+        matrix=placement_matrix([0.0, 0.0, 0.0], x_local=[0, 1, 0], z_local=[0, 0, 1]),
+        is_si=True,
     )
 
     # --- Internal partition at x=5 (north-south) -------------------------
@@ -233,10 +294,10 @@ def main():
         "root.create_entity", model,
         ifc_class="IfcOpeningElement", name="Opening_Door",
     )
-    # Opening geometry slightly oversized (SI METRES)
+    # Opening geometry — match door size with small tolerance (SI METRES)
     opening_door_rep = ifcopenshell.api.run(
         "geometry.add_wall_representation", model,
-        context=body, length=0.92, height=2.14, thickness=0.4,
+        context=body, length=0.82, height=2.04, thickness=0.25,
     )
     ifcopenshell.api.run(
         "geometry.assign_representation", model,
@@ -244,9 +305,9 @@ def main():
     )
 
     # b. Position opening (SI METRES)
-    # Shift x by 0.1 to center in 0.2m thick wall
+    # Center opening in wall thickness (wall is 0.2m, opening is 0.25m)
     matrix_open = placement_matrix(
-        [5.1, 3.0, 0.0], x_local=[0, 1, 0], z_local=[0, 0, 1]
+        [5.025, 3.0, 0.0], x_local=[0, 1, 0], z_local=[0, 0, 1]
     )
     ifcopenshell.api.run(
         "geometry.edit_object_placement", model,
@@ -310,7 +371,7 @@ def main():
         )
         opening_w_rep = ifcopenshell.api.run(
             "geometry.add_wall_representation", model,
-            context=body, length=1.3, height=1.3, thickness=0.4,
+            context=body, length=1.2, height=1.2, thickness=0.25,
         )
         ifcopenshell.api.run(
             "geometry.assign_representation", model,
@@ -318,9 +379,9 @@ def main():
         )
 
         # b. Position opening (SI METRES) — sill at 0.9 m
-        # Shift y by 0.1 to center in 0.2m thick wall (wall extends -Y from y=8)
+        # Center opening in wall thickness (wall is 0.2m, opening is 0.25m)
         matrix_ow = placement_matrix(
-            [global_x, 8.1, 0.9], x_local=[-1, 0, 0], z_local=[0, 0, 1]
+            [global_x, 8.025, 0.9], x_local=[-1, 0, 0], z_local=[0, 0, 1]
         )
         ifcopenshell.api.run(
             "geometry.edit_object_placement", model,
@@ -434,7 +495,7 @@ def main():
     )
 
     # ==================================================================
-    # 7. Materials
+    # 7. Materials + Surface Styles (colours)
     # ==================================================================
     concrete = ifcopenshell.api.run(
         "material.add_material", model, name="Concrete", category="concrete"
@@ -444,6 +505,9 @@ def main():
     )
     steel = ifcopenshell.api.run(
         "material.add_material", model, name="Steel", category="steel"
+    )
+    glass_mat = ifcopenshell.api.run(
+        "material.add_material", model, name="Glass", category="glass"
     )
 
     # Walls — timber frame
@@ -465,14 +529,83 @@ def main():
         products=[door], type="IfcMaterial", material=timber,
     )
 
-    # Windows — assign individually (no material specified, skip if desired)
-    # Leaving windows without explicit material for now.
+    # Windows — glass
+    for w in windows:
+        ifcopenshell.api.run(
+            "material.assign_material", model,
+            products=[w], type="IfcMaterial", material=glass_mat,
+        )
 
     # Roof slabs — steel (metal roofing)
     ifcopenshell.api.run(
         "material.assign_material", model,
         products=[roof_s, roof_n], type="IfcMaterial", material=steel,
     )
+
+    # ==================================================================
+    # 7b. Surface Styles (RGB colours for rendering)
+    # ==================================================================
+
+    def make_style(rgb, transparency=0.0):
+        """Create a surface style with RGB colour."""
+        style = ifcopenshell.api.run("style.add_style", model, name="")
+        ifcopenshell.api.run(
+            "style.add_surface_style", model,
+            style=style,
+            ifc_class="IfcSurfaceStyleShading",
+            attributes={
+                "SurfaceColour": {"Name": None, "Red": rgb[0], "Green": rgb[1], "Blue": rgb[2]},
+                "Transparency": transparency,
+            },
+        )
+        return style
+
+    def add_colour(element, rgb, transparency=0.0):
+        """Add a surface style with RGB colour to all items in an element's representation."""
+        if element.Representation is None:
+            return
+        style = make_style(rgb, transparency)
+        for rep in element.Representation.Representations:
+            ifcopenshell.api.run(
+                "style.assign_representation_styles", model,
+                shape_representation=rep,
+                styles=[style],
+            )
+
+    def add_window_colours(element, frame_rgb, glass_rgb, glass_transparency=0.6):
+        """Style window with frame colour (per-item glass styling not supported by most viewers)."""
+        if element.Representation is None:
+            return
+        # Apply frame colour to the whole window representation
+        # Per-item glass transparency is not reliably supported by web-ifc
+        frame_style = make_style(frame_rgb)
+        for rep in element.Representation.Representations:
+            ifcopenshell.api.run(
+                "style.assign_representation_styles", model,
+                shape_representation=rep,
+                styles=[frame_style],
+            )
+
+    # Walls — warm off-white render (like painted brick)
+    for w in [wall_south, wall_east, wall_north, wall_west]:
+        add_colour(w, (0.92, 0.90, 0.85))
+
+    # Internal wall — slightly different shade
+    add_colour(wall_internal, (0.95, 0.93, 0.88))
+
+    # Floor slab — concrete grey
+    add_colour(slab, (0.7, 0.7, 0.68))
+
+    # Door — timber brown
+    add_colour(door, (0.55, 0.35, 0.2))
+
+    # Windows — light blue (viewer can't separate frame from glass)
+    for w in windows:
+        add_colour(w, (0.5, 0.7, 0.85))
+
+    # Roof — dark charcoal (Colorbond Monument)
+    add_colour(roof_s, (0.3, 0.3, 0.3))
+    add_colour(roof_n, (0.3, 0.3, 0.3))
 
     # ==================================================================
     # 8. Write IFC File

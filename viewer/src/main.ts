@@ -520,10 +520,8 @@ app.layouts = {
 };
 app.layout = "main";
 
-// 19. Auto-load from ?url= query parameter, or demo house on first visit
+// 19. Auto-load from ?url= query parameter only (otherwise start empty)
 const urlParam = new URLSearchParams(window.location.search).get("url");
 if (urlParam) {
   loadIfcFromUrl(urlParam);
-} else {
-  loadIfcFromUrl(`${import.meta.env.BASE_URL}demo_house.ifc`);
 }

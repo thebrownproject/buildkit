@@ -388,6 +388,9 @@ const treePanel = BUI.Component.create(() => {
         <bim-button label="Load IFC" icon="mdi:file-upload"
           @click=${() => fileInput.click()}>
         </bim-button>
+        <bim-button label="Load Sample" icon="mdi:home"
+          @click=${() => loadIfcFromUrl(`${import.meta.env.BASE_URL}demo_house.ifc`)}>
+        </bim-button>
         <bim-button label="Toggle Theme" icon="mdi:weather-sunny"
           tooltip-title="Toggle Theme"
           @click=${(e: Event) => {

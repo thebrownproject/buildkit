@@ -2,54 +2,100 @@
 
 **Talk to your building. Watch it build.**
 
-An open-source AI-powered IFC design toolkit. Describe a building in natural language, and an AI agent creates it as a valid IFC model — viewable in the browser, editable by conversation, no Revit required.
+Open-source toolkit for creating, viewing, and querying IFC building models with AI. Describe what you want in natural language, an AI agent calls CLI tools to generate IFC geometry, and a browser viewer renders the result. No Revit. No license fees.
 
-## What This Is
+**[Live Demo](https://thebrownproject.github.io/buildkit/)** — drag any IFC file onto the viewer
 
-Buildkit combines three things:
+---
 
-1. **CLI tools** (Python + IfcOpenShell) — create, modify, query, and validate IFC building models
-2. **Component library** — parametric templates for walls, slabs, doors, windows, columns, roofs
-3. **IFC viewer** (That Open Engine + Three.js) — browser-based 3D viewer with spatial tree, property panel, and visibility toggles
-
-An AI agent (Claude) orchestrates the tools: it reasons about your intent, selects components, fills parameters, calls tools, validates output, and self-corrects on errors.
-
-## Why
-
-Every existing tool for AI-powered building design is locked behind commercial software:
-
-| Tool | Requires | Cost |
-|------|----------|------|
-| Archie Copilot | Revit 2025 | $$$ |
-| MCP4IFC | Blender + Bonsai | Heavy dependency |
-| Text2BIM | Vectorworks | $$$ |
-| Autodesk Forma | Autodesk subscription | ~$400/mo |
-
-Buildkit requires **Python and a browser**. That's it. MIT licensed. No cloud backend.
-
-## Architecture
+## How it works
 
 ```
-User (natural language)
-  → AI Agent (Claude) reasons about intent
-    → CLI tools (IfcOpenShell) generate IFC geometry
-      → Viewer (That Open Engine) renders in browser
-        → User gives feedback
-          → Agent modifies → repeat
+Claude (AI agent — reasons about intent, selects components, fills parameters)
+    │
+    ├── ifc_create.py      Create new IFC model with spatial hierarchy
+    ├── ifc_place.py       Place elements (walls, doors, windows, slabs)
+    ├── ifc_query.py       Inspect model — summary, properties, element lists
+    │
+    └── Viewer             Browser-based 3D viewer with spatial tree,
+                           property panel, visibility toggles, theme toggle
 ```
 
 The AI never does geometry. IfcOpenShell computes all geometry. The AI reasons, plans, and calls tools with parameters.
 
-## Status
+---
 
-Early development. See [docs/spec.md](docs/spec.md) for the full specification.
+## Viewer
+
+Browser-based IFC viewer built on That Open Engine (Three.js + WASM). Drag-and-drop any IFC file.
+
+- 3D viewport with orbit, pan, zoom
+- Spatial tree — IFC hierarchy with search
+- Property inspector — click any element to see its data
+- Visibility toggles — hide/show by element type
+- Hover tooltip — element name + IFC type
+- Dark/light theme toggle
+
+## CLI Tools
+
+All tools output JSON. All dimensions in millimetres.
+
+```bash
+# Create a new model
+python cli-tools/ifc_create.py \
+  --output house.ifc \
+  --project "My House" \
+  --storeys "Ground Floor:0:2700"
+
+# Place a wall
+python cli-tools/ifc_place.py wall \
+  --model house.ifc \
+  --name "Wall_North" \
+  --start 0,0 --end 10000,0 \
+  --height 2700 --thickness 200 \
+  --storey "Ground Floor"
+
+# Inspect the model
+python cli-tools/ifc_query.py --model house.ifc --summary
+python cli-tools/ifc_query.py --model house.ifc --type wall
+python cli-tools/ifc_query.py --model house.ifc --element "Wall_North" --properties
+```
 
 ## Tech Stack
 
-- **IFC Engine:** IfcOpenShell 0.8.x (Python, LGPL)
-- **Viewer:** That Open Engine (web-ifc WASM + Three.js, MIT/MPL-2.0)
-- **Agent:** Claude (via Claude Code or API)
-- **Language:** Python (CLI), TypeScript (viewer)
+**IFC Engine:** IfcOpenShell 0.8.x (Python, LGPL) <br>
+**Viewer:** That Open Engine · web-ifc WASM · Three.js (MIT/MPL-2.0) <br>
+**Agent:** Claude (via Claude Code or API) <br>
+**Language:** Python (CLI tools), TypeScript (viewer)
+
+## Setup
+
+```bash
+# CLI tools
+pip install ifcopenshell numpy
+
+# Viewer
+cd viewer && npm install && npm run dev
+```
+
+## Project Structure
+
+```
+buildkit/
+├── cli-tools/
+│   ├── ifc_create.py          Create new IFC models
+│   ├── ifc_place.py           Place elements (wall subcommand)
+│   └── ifc_query.py           Query and inspect models
+├── viewer/
+│   ├── src/main.ts            Viewer application
+│   └── public/demo_house.ifc  Sample model
+├── examples/
+│   └── demo_house.py          Generate a demo house from scratch
+└── docs/
+    ├── spec.md                Full specification
+    ├── spike-test.md          Pipeline validation plan
+    └── research/              Landscape research
+```
 
 ## Prior Art
 

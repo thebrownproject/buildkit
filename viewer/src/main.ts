@@ -14,7 +14,7 @@ const worlds = components.get(OBC.Worlds);
 const world = worlds.create<
   OBC.SimpleScene,
   OBC.OrthoPerspectiveCamera,
-  OBC.SimpleRenderer
+  OBCF.RendererWith2D
 >();
 
 // 3. Scene
@@ -24,7 +24,7 @@ world.scene.three.background = new THREE.Color(0x1a1d23);
 
 // 4. Renderer — use bim-viewport as container
 const viewport = document.createElement("bim-viewport");
-world.renderer = new OBC.SimpleRenderer(components, viewport);
+world.renderer = new OBCF.RendererWith2D(components, viewport);
 
 // 5. Camera
 world.camera = new OBC.OrthoPerspectiveCamera(components);
@@ -42,6 +42,9 @@ components.init();
 
 // Theme state
 let isDarkTheme = true;
+
+// Clipping state
+let clippingEnabled = false;
 
 // 8. Fragments
 const fragments = components.get(OBC.FragmentsManager);
@@ -88,6 +91,87 @@ hoverer.material = new THREE.MeshBasicMaterial({
 // 12. Classifier + Hider (visibility toggles)
 const classifier = components.get(OBC.Classifier);
 const hider = components.get(OBC.Hider);
+
+// 12b. Clipper (section cuts)
+const clipper = components.get(OBC.Clipper);
+clipper.setup({
+  color: new THREE.Color("#202932"),
+  opacity: 0.2,
+  size: 5,
+});
+
+// 12c. Measurement tools
+const lengthMeasurer = components.get(OBCF.LengthMeasurement);
+lengthMeasurer.world = world;
+lengthMeasurer.color = new THREE.Color("#494cb6");
+lengthMeasurer.units = "mm";
+lengthMeasurer.rounding = 0;
+lengthMeasurer.enabled = false;
+
+const areaMeasurer = components.get(OBCF.AreaMeasurement);
+areaMeasurer.world = world;
+areaMeasurer.color = new THREE.Color("#49b664");
+areaMeasurer.units = "m2";
+areaMeasurer.rounding = 2;
+areaMeasurer.enabled = false;
+
+// 12d. Mode management
+type ViewerMode = "select" | "measure-length" | "measure-area";
+let currentMode: ViewerMode = "select";
+
+function setMode(mode: ViewerMode) {
+  currentMode = mode;
+
+  // Disable all modes first
+  highlighter.enabled = false;
+  hoverer.enabled = false;
+  lengthMeasurer.enabled = false;
+  areaMeasurer.enabled = false;
+
+  switch (mode) {
+    case "select":
+      highlighter.enabled = true;
+      hoverer.enabled = true;
+      break;
+    case "measure-length":
+      lengthMeasurer.enabled = true;
+      break;
+    case "measure-area":
+      areaMeasurer.enabled = true;
+      break;
+  }
+}
+
+// Start in select mode
+setMode("select");
+
+viewport.addEventListener("dblclick", () => {
+  if (clipper.enabled) {
+    clipper.create(world);
+  } else if (lengthMeasurer.enabled) {
+    lengthMeasurer.create();
+  } else if (areaMeasurer.enabled) {
+    areaMeasurer.create();
+  }
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.code === "Delete" || event.code === "Backspace") {
+    if (clipper.enabled) clipper.delete(world);
+    if (lengthMeasurer.enabled) lengthMeasurer.delete();
+    if (areaMeasurer.enabled) areaMeasurer.delete();
+  }
+  if (event.code === "Enter" || event.code === "NumpadEnter") {
+    if (areaMeasurer.enabled) areaMeasurer.endCreation();
+  }
+  if (event.code === "Escape") {
+    setMode("select");
+    // Update tool button active states in the UI
+    document.querySelectorAll("[data-tool-btn]").forEach((btn) => {
+      (btn as BUI.Button).active = (btn as HTMLElement).dataset.toolBtn === "select";
+    });
+  }
+});
 
 // Visibility container for dynamic checkboxes (populated after model loads)
 const visibilityContainer = document.createElement("div");
@@ -232,6 +316,37 @@ async function loadIfc(file: File) {
   await updateVisibilityPanel();
 }
 
+// 15b. Screenshot handler — force render then capture
+function takeScreenshot() {
+  world.renderer!.three.render(world.scene.three, world.camera.three);
+  world.renderer!.three.domElement.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `buildkit-screenshot-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+// 15c. Load IFC from URL (also supports ?url= query parameter)
+async function loadIfcFromUrl(url: string) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.arrayBuffer();
+    const buffer = new Uint8Array(data);
+    const name = url.split("/").pop() || "model.ifc";
+    await ifcLoader.load(buffer, true, name);
+    await updateVisibilityPanel();
+  } catch (err) {
+    console.error("Failed to load IFC from URL:", err);
+  }
+}
+
 // 16. Drag-and-drop on viewport
 viewport.addEventListener("dragover", (e) => {
   e.preventDefault();
@@ -255,6 +370,14 @@ fileInput.addEventListener("change", async () => {
   await loadIfc(file);
 });
 
+// 16b. Tool button state helper
+function updateToolButtons(activeBtn: BUI.Button) {
+  document.querySelectorAll("[data-tool-btn]").forEach((btn) => {
+    (btn as BUI.Button).active = false;
+  });
+  activeBtn.active = true;
+}
+
 // 17. Build UI panels using BUI.Component.create + BUI.html
 
 // Left panel — tree + load button
@@ -277,6 +400,17 @@ const treePanel = BUI.Component.create(() => {
             grid.config.color = new THREE.Color(isDarkTheme ? 0x666666 : 0xbbbbbb);
           }}>
         </bim-button>
+        <bim-button label="Screenshot" icon="mdi:camera"
+          @click=${() => takeScreenshot()}>
+        </bim-button>
+        <bim-text-input placeholder="IFC URL..." debounce="0"
+          @keydown=${async (e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+              const input = e.target as BUI.TextInput;
+              if (input.value) await loadIfcFromUrl(input.value);
+            }
+          }}>
+        </bim-text-input>
       </bim-panel-section>
       <bim-panel-section label="Spatial Tree" icon="ph:tree-structure-bold">
         <bim-text-input
@@ -291,6 +425,61 @@ const treePanel = BUI.Component.create(() => {
       <bim-panel-section label="Visibility" icon="mdi:eye">
         ${showAllBtn}
         ${visibilityContainer}
+      </bim-panel-section>
+      <bim-panel-section label="Tools" icon="mdi:tools">
+        <bim-button
+          data-tool-btn="select"
+          label="Select"
+          icon="mdi:cursor-default"
+          active
+          @click=${(e: Event) => {
+            setMode("select");
+            updateToolButtons(e.target as BUI.Button);
+          }}>
+        </bim-button>
+        <bim-button
+          label="Section Cut"
+          icon="mdi:box-cutter"
+          @click=${(e: Event) => {
+            clippingEnabled = !clippingEnabled;
+            clipper.enabled = clippingEnabled;
+            const btn = e.target as BUI.Button;
+            btn.active = clippingEnabled;
+          }}>
+        </bim-button>
+        <bim-button
+          data-tool-btn="measure-length"
+          label="Measure Distance"
+          icon="mdi:ruler"
+          @click=${(e: Event) => {
+            setMode("measure-length");
+            updateToolButtons(e.target as BUI.Button);
+          }}>
+        </bim-button>
+        <bim-button
+          data-tool-btn="measure-area"
+          label="Measure Area"
+          icon="mdi:vector-square"
+          @click=${(e: Event) => {
+            setMode("measure-area");
+            updateToolButtons(e.target as BUI.Button);
+          }}>
+        </bim-button>
+        <bim-button
+          label="Clear Sections"
+          icon="mdi:delete-outline"
+          @click=${() => {
+            clipper.deleteAll();
+          }}>
+        </bim-button>
+        <bim-button
+          label="Clear Measurements"
+          icon="mdi:eraser"
+          @click=${() => {
+            lengthMeasurer.list.clear();
+            areaMeasurer.list.clear();
+          }}>
+        </bim-button>
       </bim-panel-section>
     </bim-panel>
   `;
@@ -327,3 +516,11 @@ app.layouts = {
   },
 };
 app.layout = "main";
+
+// 19. Auto-load from ?url= query parameter, or demo house on first visit
+const urlParam = new URLSearchParams(window.location.search).get("url");
+if (urlParam) {
+  loadIfcFromUrl(urlParam);
+} else {
+  loadIfcFromUrl(`${import.meta.env.BASE_URL}demo_house.ifc`);
+}

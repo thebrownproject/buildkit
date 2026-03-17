@@ -3,6 +3,7 @@ import * as OBC from "@thatopen/components";
 import * as OBCF from "@thatopen/components-front";
 import * as BUI from "@thatopen/ui";
 import * as BUIC from "@thatopen/ui-obc";
+import fragmentWorkerUrl from "@thatopen/fragments/worker?url";
 
 // 1. Init BUI (registers custom elements — MUST be first)
 BUI.Manager.init();
@@ -44,14 +45,14 @@ let isDarkTheme = true;
 
 // 8. Fragments
 const fragments = components.get(OBC.FragmentsManager);
-fragments.init("/node_modules/@thatopen/fragments/dist/Worker/worker.mjs");
+fragments.init(fragmentWorkerUrl);
 
 // Camera-driven fragment updates (replaces the frozen approach)
 world.camera.controls.addEventListener("update", () =>
   fragments.core.update(),
 );
 
-// Model loading
+// Model loading — scene setup only; classification happens after load completes
 fragments.list.onItemSet.add(({ value: model }) => {
   model.useCamera(world.camera.three);
   world.scene.three.add(model.object);
@@ -84,7 +85,66 @@ hoverer.material = new THREE.MeshBasicMaterial({
   depthTest: false,
 });
 
-// 12. Hover Tooltip — driven by mousemove with debounce, not Hoverer events
+// 12. Classifier + Hider (visibility toggles)
+const classifier = components.get(OBC.Classifier);
+const hider = components.get(OBC.Hider);
+
+// Visibility container for dynamic checkboxes (populated after model loads)
+const visibilityContainer = document.createElement("div");
+
+function formatCategoryName(name: string): string {
+  // Raw names are ALL CAPS like "IFCFURNISHINGELEMENT"
+  // Convert to Title Case: strip IFC prefix, lowercase, then capitalize words
+  const stripped = name
+    .replace("IFCWALLSTANDARDCASE", "IFCWALL")
+    .replace(/^IFC/, "");
+  // Insert space before each uppercase-to-lowercase boundary in camelCase,
+  // or just split known compound words for ALL CAPS input
+  const words = stripped
+    .replace(/([a-z])([A-Z])/g, "$1 $2")  // camelCase split
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")  // consecutive caps split
+    .split(/(?=[A-Z][a-z])/)  // split before Cap+lowercase
+    .join(" ")
+    .trim();
+  // If still all caps (no camelCase detected), just title-case it
+  if (words === words.toUpperCase()) {
+    return words.charAt(0) + words.slice(1).toLowerCase();
+  }
+  return words;
+}
+
+async function updateVisibilityPanel() {
+  await classifier.byCategory();
+  const categories = classifier.list.get("Categories");
+  if (!categories) return;
+
+  visibilityContainer.innerHTML = "";
+
+  for (const [categoryName, groupData] of categories) {
+    const checkbox = document.createElement("bim-checkbox") as BUI.Checkbox;
+    checkbox.label = formatCategoryName(categoryName);
+    checkbox.checked = true;
+    checkbox.addEventListener("change", async () => {
+      const visible = checkbox.checked;
+      const items = await classifier.find({ Categories: [categoryName] });
+      await hider.set(visible, items);
+    });
+    visibilityContainer.appendChild(checkbox);
+  }
+}
+
+// "Show All" reset button
+const showAllBtn = document.createElement("bim-button") as BUI.Button;
+showAllBtn.label = "Show All";
+showAllBtn.icon = "mdi:eye";
+showAllBtn.addEventListener("click", async () => {
+  await hider.set(true);
+  visibilityContainer.querySelectorAll("bim-checkbox").forEach((cb) => {
+    (cb as BUI.Checkbox).checked = true;
+  });
+});
+
+// 13. Hover Tooltip — driven by mousemove with debounce, not Hoverer events
 const tooltip = document.createElement("div");
 tooltip.className = "hover-tooltip";
 document.body.appendChild(tooltip);
@@ -168,6 +228,8 @@ async function loadIfc(file: File) {
   const data = await file.arrayBuffer();
   const buffer = new Uint8Array(data);
   await ifcLoader.load(buffer, true, file.name);
+  // Classify after load completes — model data is fully available at this point
+  await updateVisibilityPanel();
 }
 
 // 16. Drag-and-drop on viewport
@@ -226,6 +288,10 @@ const treePanel = BUI.Component.create(() => {
         </bim-text-input>
         ${spatialTree}
       </bim-panel-section>
+      <bim-panel-section label="Visibility" icon="mdi:eye">
+        ${showAllBtn}
+        ${visibilityContainer}
+      </bim-panel-section>
     </bim-panel>
   `;
 });
@@ -250,7 +316,7 @@ const propertiesPanel = BUI.Component.create(() => {
 });
 
 // 18. Assemble grid layout
-const app = document.getElementById("app") as BUI.Grid;
+const app = document.getElementById("app") as BUI.Grid<["main"]>;
 app.layouts = {
   main: {
     template: `

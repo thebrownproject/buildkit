@@ -1,4 +1,4 @@
-# Builkkit Research Summary
+# Buildkit Research Summary
 
 Research conducted 2026-03-17 across 11 parallel agents.
 

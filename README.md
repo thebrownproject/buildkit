@@ -1,4 +1,4 @@
-# Builkkit
+# Buildkit
 
 **Talk to your building. Watch it build.**
 
@@ -6,7 +6,7 @@ An open-source AI-powered IFC design toolkit. Describe a building in natural lan
 
 ## What This Is
 
-Builkkit combines three things:
+Buildkit combines three things:
 
 1. **CLI tools** (Python + IfcOpenShell) — create, modify, query, and validate IFC building models
 2. **Component library** — parametric templates for walls, slabs, doors, windows, columns, roofs
@@ -25,7 +25,7 @@ Every existing tool for AI-powered building design is locked behind commercial s
 | Text2BIM | Vectorworks | $$$ |
 | Autodesk Forma | Autodesk subscription | ~$400/mo |
 
-Builkkit requires **Python and a browser**. That's it. MIT licensed. No cloud backend.
+Buildkit requires **Python and a browser**. That's it. MIT licensed. No cloud backend.
 
 ## Architecture
 

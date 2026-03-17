@@ -1,4 +1,4 @@
-# Builkkit — AI-Powered IFC Design Toolkit
+# Buildkit — AI-Powered IFC Design Toolkit
 
 **Talk to your building. Watch it build.**
 
@@ -8,9 +8,9 @@ An open-source toolkit that lets AI agents design, modify, and validate IFC buil
 
 ## 1. Vision
 
-Builkkit is the open-source bridge between natural language and IFC building models. A user describes what they want — "3-bed house, single storey, 180sqm, north-facing living" — and an AI agent reasons about the brief, selects parametric building components, calls CLI tools to generate IFC geometry, and renders the result in a browser-based viewer. The user gives feedback — "move that door 500mm left" — and the agent modifies the model.
+Buildkit is the open-source bridge between natural language and IFC building models. A user describes what they want — "3-bed house, single storey, 180sqm, north-facing living" — and an AI agent reasons about the brief, selects parametric building components, calls CLI tools to generate IFC geometry, and renders the result in a browser-based viewer. The user gives feedback — "move that door 500mm left" — and the agent modifies the model.
 
-This is **Archie Copilot without Revit**. Where Archie Copilot proved that natural language can drive building element creation inside Revit (generating IronPython code against the Revit API), Builkkit does the same thing against an open, portable stack: IfcOpenShell for geometry, That Open Engine for viewing, Claude for reasoning.
+This is **Archie Copilot without Revit**. Where Archie Copilot proved that natural language can drive building element creation inside Revit (generating IronPython code against the Revit API), Buildkit does the same thing against an open, portable stack: IfcOpenShell for geometry, That Open Engine for viewing, Claude for reasoning.
 
 ### Why Now
 
@@ -57,7 +57,7 @@ This is **Archie Copilot without Revit**. Where Archie Copilot proved that natur
 
 ### Key Insight
 
-The gap in the landscape is clear: **no open-source tool combines conversational AI + standalone IfcOpenShell (no Blender) + browser-based viewer + Australian market focus.** MCP4IFC is closest but requires Blender. Text2BIM requires Vectorworks. Archie Copilot requires Revit. Builkkit requires nothing but Python and a browser.
+The gap in the landscape is clear: **no open-source tool combines conversational AI + standalone IfcOpenShell (no Blender) + browser-based viewer + Australian market focus.** MCP4IFC is closest but requires Blender. Text2BIM requires Vectorworks. Archie Copilot requires Revit. Buildkit requires nothing but Python and a browser.
 
 ---
 
@@ -186,7 +186,7 @@ Mesh-based (`add_mesh_representation()`) from a library of common objects.
 
 ### Geometry Complexity Boundary
 
-Builkkit uses only **SweptSolid + Clipping** (IfcExtrudedAreaSolid + IfcBooleanClippingResult). This covers 90%+ of residential/commercial geometry. We explicitly do NOT attempt:
+Buildkit uses only **SweptSolid + Clipping** (IfcExtrudedAreaSolid + IfcBooleanClippingResult). This covers 90%+ of residential/commercial geometry. We explicitly do NOT attempt:
 - NURBS / B-spline surfaces (organic shapes)
 - Advanced B-rep (complex curved facades)
 - CSG boolean trees (complex assemblies)
@@ -275,7 +275,7 @@ python ifc_query.py --model house.ifc --element <GUID> --properties
 python ifc_query.py --model house.ifc --storey "Ground Floor" --elements
 ```
 
-Returns structured JSON. This is Builkkit's equivalent of BuildBrain's `ifc_extract.py`.
+Returns structured JSON. This is Buildkit's equivalent of BuildBrain's `ifc_extract.py`.
 
 ### `ifc_validate.py` — Validate Model
 
@@ -518,7 +518,7 @@ three
 ## 10. Project Structure
 
 ```
-builkkit/
+buildkit/
 ├── docs/
 │   ├── spec.md                    # This document
 │   ├── research/                  # Research notes from agents
@@ -571,10 +571,10 @@ builkkit/
 
 ## 11. Relationship to BuildBrain
 
-Builkkit and BuildBrain are complementary:
+Buildkit and BuildBrain are complementary:
 
 ```
-BuildBrain (read/analyse)  ←→  Builkkit (create/modify)
+BuildBrain (read/analyse)  ←→  Buildkit (create/modify)
          ↕                            ↕
     IFC + PDF files              IFC Viewer
          ↕                            ↕
@@ -582,19 +582,19 @@ BuildBrain (read/analyse)  ←→  Builkkit (create/modify)
 ```
 
 - **BuildBrain** reads existing IFC models and PDFs, extracts data, cross-validates, generates reports.
-- **Builkkit** creates new IFC models from scratch, modifies existing models, validates against codes.
+- **Buildkit** creates new IFC models from scratch, modifies existing models, validates against codes.
 - **Shared viewer** — both projects can use the same That Open Engine viewer for visualisation.
-- **Cross-validation loop** — BuildBrain extracts data from a PDF specification; Builkkit generates an IFC model; BuildBrain validates that the model matches the spec.
+- **Cross-validation loop** — BuildBrain extracts data from a PDF specification; Buildkit generates an IFC model; BuildBrain validates that the model matches the spec.
 
-Future integration: a single web UI with chat, viewer, and both toolkits available to the agent. The agent decides whether to read (BuildBrain) or write (Builkkit) based on the user's intent.
+Future integration: a single web UI with chat, viewer, and both toolkits available to the agent. The agent decides whether to read (BuildBrain) or write (Buildkit) based on the user's intent.
 
 ---
 
 ## 12. Open Questions
 
-1. **Claude Code plugin vs MCP server?** Builkkit could be a Claude Code plugin (like BuildBrain) with skills and CLI tools, OR an MCP server that any LLM client can connect to. MCP is more portable. Claude Code plugin is more proven (we've done it). Could support both.
+1. **Claude Code plugin vs MCP server?** Buildkit could be a Claude Code plugin (like BuildBrain) with skills and CLI tools, OR an MCP server that any LLM client can connect to. MCP is more portable. Claude Code plugin is more proven (we've done it). Could support both.
 
-2. **Viewer as separate project or integrated?** The viewer is useful standalone (pure IFC viewer, no AI). Could be its own repo/project, embedded into Builkkit for the design workflow. Leaning toward separate repo, shared via npm package.
+2. **Viewer as separate project or integrated?** The viewer is useful standalone (pure IFC viewer, no AI). Could be its own repo/project, embedded into Buildkit for the design workflow. Leaning toward separate repo, shared via npm package.
 
 3. **How to handle multi-storey?** Single-storey is straightforward. Multi-storey introduces: slab-to-slab alignment, stair placement, vertical element continuity (columns through floors). Needs careful spatial hierarchy management.
 

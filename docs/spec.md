@@ -36,7 +36,7 @@ This is **Archie Copilot without Revit**. Where Archie Copilot proved that natur
 |---------|----------|-----------|-------------|
 | **Archie Copilot** (ours) | Claude → IronPython → Revit API | Proven: built a house from 6 NL prompts. Self-correcting loop (3 retries). | Requires Revit 2025 ($$$), Windows-only, .NET/IronPython complexity |
 | **MCP4IFC** (2025, MIT) | Claude → MCP → Blender/Bonsai → IfcOpenShell | 50-70 MCP tools, RAG for IfcOpenShell docs, visual feedback via screenshots | Requires Blender running (heavy), 40k token toolset, walls don't connect properly, weak self-correction |
-| **Text2BIM** (2024, open source) | Multi-agent LLM → Vectorworks API | 4 specialised agents (planner, coder, checker, etc.), rule-based model validation | Locked to Vectorworks, not IFC-native |
+| **Text2BIM** (2024, open source) | Multi-agent LLM → Vectorworks API | 4 agents (Enhancer, Architect, Programmer, Reviewer), 26 tool functions, Solibri validation loop (3 iterations), BCF-based checking | Locked to Vectorworks + Solibri (both commercial), Windows-only, LOD 200 only, no curved geometry. But agent architecture is platform-agnostic — only the 26 tools are Vectorworks-specific |
 | **Zoo.dev Zookeeper** | LLM → KCL code → Zoo geometry engine | Conversational CAD agent, visual inspection, 5-retry loop, file ingestion | Mechanical CAD focus (not architecture), proprietary engine, $0.50/min |
 
 ### Commercial Landscape
@@ -462,7 +462,20 @@ This mirrors Archie Copilot's proven self-correction loop and Zoo.dev's 5-retry 
 - [ ] BuildBrain integration — cross-validate IFC model against PDF specifications
 - [ ] Compliance report generation
 
-**Australian context:** No automated NCC/BCA compliance checking tool exists in the market. The ABCB is actively pursuing digitisation. Singapore's CORENET proved the concept. This is a significant market gap and a strong differentiator.
+**Australian context:**
+- The NCC is NOT machine-readable — no structured/computable version exists. ABCB is at "discussion paper" stage. The door is wide open.
+- **Competitors are thin:** UptoCode (PDF-based checking, not IFC-native), Archistar (planning compliance via eComply, not deep NCC). Neither does IFC-based fire/accessibility analysis.
+- **Residential NCC changes paused until mid-2029** — stable rule set, perfect window to build.
+- **Singapore's CORENET** took 20 years, **Estonia's e-Construction** 5+ years — government will be 3-5 years behind a startup.
+- **IDS is the right data quality gate** — validates that IFC models contain required properties. Actual NCC rule logic is separate (structured Python checks + LLM reasoning).
+- **Key automatable checks for MVP (Class 1a/Class 2 residential):**
+  - Fire separation: FRL of walls, fire door ratings, smoke alarm placement
+  - Exit widths: door >= 850mm, corridor >= 1000mm
+  - Room sizes: min bedroom/bathroom areas
+  - Ceiling heights: 2.4m habitable, 2.1m non-habitable
+  - Insulation R-values vs climate zone
+  - Glazing ratios (window area / floor area)
+- **Reality check:** Most AU residential IFC models have geometry but sparse properties. Tool must handle partial data gracefully — check what exists, flag what's missing.
 
 ---
 
